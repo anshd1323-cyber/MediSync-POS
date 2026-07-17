@@ -1,0 +1,188 @@
+{
+  "info": {
+    "name": "Doctor-Patient Consultation Backend",
+    "description": "Full API collection for the consultation backend assignment. Run requests top to bottom on a fresh DB — token and id variables auto-save from responses.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "patientToken", "value": "" },
+    { "key": "doctorToken", "value": "" },
+    { "key": "doctorId", "value": "" },
+    { "key": "consultationId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register Patient",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const data = pm.response.json().data;",
+            "pm.collectionVariables.set('patientToken', data.token);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Ravi Kumar\",\n  \"email\": \"ravi@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"PATIENT\"\n}" }
+          }
+        },
+        {
+          "name": "Register Doctor",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const data = pm.response.json().data;",
+            "pm.collectionVariables.set('doctorToken', data.token);",
+            "pm.collectionVariables.set('doctorId', data.user.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Dr. Anjali Mehta\",\n  \"email\": \"anjali@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"DOCTOR\",\n  \"specialization\": \"Cardiology\",\n  \"yearsOfExperience\": 8\n}" }
+          }
+        },
+        {
+          "name": "Login Patient",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const data = pm.response.json().data;",
+            "pm.collectionVariables.set('patientToken', data.token);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"ravi@example.com\",\n  \"password\": \"password123\"\n}" }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/profile"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctors",
+      "item": [
+        {
+          "name": "List Doctors",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/doctors"
+          }
+        },
+        {
+          "name": "Get Doctor By Id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/doctors/{{doctorId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Consultations",
+      "item": [
+        {
+          "name": "Create Consultation (Patient)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const data = pm.response.json().data;",
+            "pm.collectionVariables.set('consultationId', data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/consultations",
+            "body": { "mode": "raw", "raw": "{\n  \"doctorId\": {{doctorId}}\n}" }
+          }
+        },
+        {
+          "name": "List My Consultations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/consultations"
+          }
+        },
+        {
+          "name": "Get Consultation By Id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/consultations/{{consultationId}}"
+          }
+        },
+        {
+          "name": "Doctor Sets Status to ACTIVE",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/consultations/{{consultationId}}/status",
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"ACTIVE\"\n}" }
+          }
+        },
+        {
+          "name": "Doctor Sets Status to COMPLETED",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/consultations/{{consultationId}}/status",
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"COMPLETED\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Patient Sends Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/consultations/{{consultationId}}/messages",
+            "body": { "mode": "raw", "raw": "{\n  \"message\": \"Doctor, I have had a fever for 3 days\"\n}" }
+          }
+        },
+        {
+          "name": "Doctor Replies",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/consultations/{{consultationId}}/messages",
+            "body": { "mode": "raw", "raw": "{\n  \"message\": \"What symptoms do you have, and since when?\"\n}" }
+          }
+        },
+        {
+          "name": "Get Messages",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/consultations/{{consultationId}}/messages"
+          }
+        }
+      ]
+    }
+  ]
+}
