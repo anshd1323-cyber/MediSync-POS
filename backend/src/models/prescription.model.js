@@ -1,49 +1,59 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const Prescription = sequelize.define('Prescription', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-  },
-  tenantId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
-  visitId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
-  doctorId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
-  patientId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
-  medicines: {
-    type: DataTypes.TEXT, // JSON string — use JSONB with PostgreSQL
-    allowNull: false,
-    defaultValue: '[]',
-    get() {
-      const raw = this.getDataValue('medicines');
-      try { return JSON.parse(raw); } catch { return []; }
+const Prescription = sequelize.define(
+  'Prescription',
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
     },
-    set(val) {
-      this.setDataValue('medicines', typeof val === 'string' ? val : JSON.stringify(val));
+    clinicId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'clinic_id',
+    },
+    careEpisodeId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'care_episode_id',
+    },
+    consultationId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'consultation_id',
+    },
+    patientId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'patient_id',
+    },
+    doctorId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'doctor_id',
+    },
+    status: {
+      type: DataTypes.ENUM('DRAFT', 'SIGNED', 'PARTIALLY_DISPENSED', 'DISPENSED'),
+      allowNull: false,
+      defaultValue: 'DRAFT',
+    },
+    signedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'signed_at',
+    },
+    signatureHash: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'signature_hash',
     },
   },
-  notes: {
-    type: DataTypes.TEXT,
-  },
-  pdfUrl: {
-    type: DataTypes.STRING(500),
-  },
-}, {
-  tableName: 'prescriptions',
-  updatedAt: false,
-});
+  {
+    tableName: 'prescriptions',
+    timestamps: true,
+  }
+);
 
 module.exports = Prescription;

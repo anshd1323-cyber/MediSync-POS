@@ -20,6 +20,7 @@ router.get('/', consultationController.listConsultations);
 router.get('/:id', consultationIdParamRule, validate, consultationController.getConsultation);
 router.patch('/:id/status', restrictTo('DOCTOR'), updateStatusRules, validate, consultationController.updateStatus);
 router.patch('/:id/notes', restrictTo('DOCTOR'), consultationIdParamRule, validate, consultationController.updateNotes);
+router.post('/:id/finalize', restrictTo('DOCTOR'), consultationIdParamRule, validate, consultationController.finalizeConsultation);
 
 router.post('/:id/messages', sendMessageRules, validate, messageController.sendMessage);
 router.get('/:id/messages', consultationIdParamRule, validate, messageController.getMessages);

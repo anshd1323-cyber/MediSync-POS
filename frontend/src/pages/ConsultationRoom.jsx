@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { consultationAPI } from '../api';
+import { consultationAPI, productAPI } from '../api';
 import { io } from 'socket.io-client';
 import { 
   Video, 
@@ -17,7 +17,9 @@ import {
   AlertTriangle,
   X,
   FileText,
-  Sparkles
+  Sparkles,
+  Pill,
+  Plus
 } from 'lucide-react';
 
 const socket = io('http://localhost:5000', { autoConnect: false });
@@ -62,6 +64,60 @@ export function ConsultationRoom({ user }) {
   // Custom smart suggestions and speech states
   const [suggestedDrugs, setSuggestedDrugs] = useState([]);
   const [dictating, setDictating] = useState(false);
+
+  // Structured Prescription States
+  const [prescriptionItems, setPrescriptionItems] = useState([]);
+  const [productQuery, setProductQuery] = useState('');
+  const [productResults, setProductResults] = useState([]);
+  const [activeDrug, setActiveDrug] = useState(null);
+  const [drugForm, setDrugForm] = useState({ dosage: '', frequency: '', durationDays: '', substitutionAllowed: false, scheduleClass: 'OTC' });
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (productQuery.length >= 2) {
+        try {
+          const { data } = await productAPI.search(productQuery);
+          setProductResults(data.data || []);
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        setProductResults([]);
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [productQuery]);
+
+  const handleSelectProduct = (product) => {
+    setActiveDrug(product);
+    setProductQuery(product.name);
+    setProductResults([]);
+    setDrugForm(prev => ({ ...prev, scheduleClass: product.scheduleClass || 'OTC' }));
+  };
+
+  const handleAddDrug = () => {
+    if (!activeDrug || !drugForm.dosage || !drugForm.frequency || !drugForm.durationDays) {
+      alert("Please fill out all drug details (Product, Dosage, Frequency, Duration).");
+      return;
+    }
+    setPrescriptionItems([...prescriptionItems, {
+      productId: activeDrug.id,
+      productName: activeDrug.name,
+      dosage: drugForm.dosage,
+      frequency: drugForm.frequency,
+      durationDays: parseInt(drugForm.durationDays),
+      substitutionAllowed: drugForm.substitutionAllowed,
+      scheduleClass: drugForm.scheduleClass !== 'OTC' ? drugForm.scheduleClass : null
+    }]);
+    
+    setActiveDrug(null);
+    setProductQuery('');
+    setDrugForm({ dosage: '', frequency: '', durationDays: '', substitutionAllowed: false, scheduleClass: 'OTC' });
+  };
+
+  const handleRemoveDrug = (index) => {
+    setPrescriptionItems(prev => prev.filter((_, i) => i !== index));
+  };
 
   const fetchMessages = async () => {
     try {
@@ -291,6 +347,23 @@ export function ConsultationRoom({ user }) {
       alert('Prescription sent directly to patient chat!');
     } catch (err) {
       alert('Failed to send prescription.');
+    }
+  };
+
+  const handleSignAndEndConsult = async () => {
+    if (!notes.assessment || !notes.plan) {
+      alert("Please fill out Assessment and Plan before ending the consultation.");
+      return;
+    }
+    try {
+      await consultationAPI.finalize(id, {
+        notes: JSON.stringify(notes),
+        prescriptionItems: prescriptionItems.length > 0 ? prescriptionItems : undefined
+      });
+      alert('Consultation finalized and invoiced successfully!');
+      navigate('/dashboard');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to finalize consultation.');
     }
   };
 
@@ -749,13 +822,106 @@ export function ConsultationRoom({ user }) {
                 )}
               </div>
             </div>
+            <div style={{ marginTop: '24px', borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <Pill size={16} style={{ color: 'var(--color-primary)' }} />
+                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>Structured Prescription Items</h4>
+              </div>
+
+              {/* Added Items List */}
+              {prescriptionItems.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                  {prescriptionItems.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--color-bg)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--color-border-light)' }}>
+                      <div>
+                        <strong style={{ fontSize: '13px', color: 'var(--color-text)', display: 'block' }}>{item.productName}</strong>
+                        <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                          {item.dosage} • {item.frequency} • {item.durationDays} Days 
+                          {item.scheduleClass ? ` • (Sch: ${item.scheduleClass})` : ''}
+                          {item.substitutionAllowed ? ' • Sub Allowed' : ''}
+                        </span>
+                      </div>
+                      <button onClick={() => handleRemoveDrug(idx)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer' }}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add New Drug Form */}
+              <div style={{ background: 'var(--color-bg)', padding: '12px', borderRadius: '8px', border: '1px dashed var(--color-border)' }}>
+                <div className="form-group" style={{ position: 'relative', marginBottom: '12px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '11px' }}>Product Search (by Name)</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    style={{ height: '32px', fontSize: '12px' }}
+                    value={productQuery} 
+                    onChange={e => { setProductQuery(e.target.value); setActiveDrug(null); }} 
+                    placeholder="E.g. Amoxicillin..." 
+                  />
+                  {productResults.length > 0 && !activeDrug && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--color-white)', border: '1px solid var(--color-border)', borderRadius: '8px', boxShadow: 'var(--shadow-lg)', maxHeight: '140px', overflowY: 'auto', zIndex: 100, marginTop: '4px' }}>
+                      {productResults.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleSelectProduct(p)}
+                          style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', fontSize: '12px', cursor: 'pointer', borderBottom: '1px solid var(--color-border-light)' }}
+                        >
+                          <strong>{p.name}</strong> <span style={{ color: 'var(--color-text-muted)' }}>- {p.stockQuantity} in stock {p.scheduleClass ? `(Sch: ${p.scheduleClass})` : ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '11px' }}>Dosage</label>
+                    <input type="text" className="form-input" style={{ height: '32px', fontSize: '12px' }} value={drugForm.dosage} onChange={e => setDrugForm({...drugForm, dosage: e.target.value})} placeholder="E.g. 500mg" />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '11px' }}>Frequency</label>
+                    <input type="text" className="form-input" style={{ height: '32px', fontSize: '12px' }} value={drugForm.frequency} onChange={e => setDrugForm({...drugForm, frequency: e.target.value})} placeholder="E.g. BID" />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', alignItems: 'end' }}>
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '11px' }}>Days</label>
+                    <input type="number" className="form-input" style={{ height: '32px', fontSize: '12px' }} value={drugForm.durationDays} onChange={e => setDrugForm({...drugForm, durationDays: e.target.value})} placeholder="E.g. 5" min="1" />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '11px' }}>Class</label>
+                    <select className="form-input" style={{ height: '32px', fontSize: '12px', padding: '0 8px' }} value={drugForm.scheduleClass} onChange={e => setDrugForm({...drugForm, scheduleClass: e.target.value})}>
+                      <option value="OTC">OTC</option>
+                      <option value="H">H</option>
+                      <option value="H1">H1</option>
+                      <option value="X">X</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', height: '32px' }}>
+                    <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={drugForm.substitutionAllowed} onChange={e => setDrugForm({...drugForm, substitutionAllowed: e.target.checked})} />
+                      Sub Allowed
+                    </label>
+                  </div>
+                </div>
+
+                <button type="button" onClick={handleAddDrug} className="btn btn-secondary" style={{ width: '100%', marginTop: '12px', padding: '6px', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                  <Plus size={14} /> Add Item
+                </button>
+              </div>
+            </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '20px', borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
               <button className="btn btn-secondary" style={{ padding: '10px', fontSize: '12px', background: 'var(--color-white)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} onClick={saveNotes} disabled={savingNotes}>
                 {savingNotes ? 'Saving...' : 'Save Draft'}
               </button>
-              <button className="btn btn-primary" style={{ padding: '10px', fontSize: '12px' }} onClick={sendPrescription}>
-                Issue Rx
+              <button className="btn btn-primary" style={{ padding: '10px', fontSize: '12px' }} onClick={handleSignAndEndConsult}>
+                Sign & End Consult
               </button>
             </div>
           </div>

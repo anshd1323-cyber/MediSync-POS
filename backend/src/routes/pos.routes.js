@@ -43,6 +43,7 @@ router.post('/renew', posController.renewSubscription);
 
 router.use(checkClinicSubscription);
 
+router.get('/lookup', posController.lookupEpisode);
 router.post('/generate', posController.generateInvoice);
 router.put('/:id/pay', posController.payInvoice);
 router.get('/', posController.getClinicInvoices);

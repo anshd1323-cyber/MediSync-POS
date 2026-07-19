@@ -8,7 +8,7 @@ import {
   AlertTriangle,
   Loader2
 } from 'lucide-react';
-import axios from 'axios';
+import { posAPI } from '../api';
 
 export function POSCheckout({ 
   isOpen, 
@@ -19,6 +19,7 @@ export function POSCheckout({
   totalAmount, 
   patientName,
   consultationId,
+  invoiceId,
   onPaymentSuccess 
 }) {
   const [paymentMethod, setPaymentMethod] = useState('CASH'); // 'CASH' | 'CARD' | 'UPI'
@@ -31,25 +32,30 @@ export function POSCheckout({
     setLoading(true);
     setErrorMsg('');
     try {
-      const token = localStorage.getItem('token');
+      let targetInvoiceId = invoiceId;
       
-      // 1. Generate POS invoice in unpaid state first
-      const invoiceRes = await axios.post('http://localhost:5000/pos/invoices/generate', {
-        consultationId: consultationId || null,
-        patientName,
-        items: cart.map(item => ({ itemName: item.name, price: item.price })),
-        discount
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // If we don't have an active invoice, generate a fresh walk-in invoice
+      if (!targetInvoiceId) {
+        const generateRes = await posAPI.generate({
+          consultationId: consultationId || null,
+          patientName,
+          items: cart.filter(c => !c.isPrescription).map(item => ({ itemName: item.name, price: item.price })),
+          discount
+        });
+        targetInvoiceId = generateRes.data.data.id;
+      }
 
-      const invoice = invoiceRes.data.data;
+      // Map cart items for the pay endpoint so backend knows what stock to deduct
+      const payItems = cart.map(item => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        prescriptionItemId: item.prescriptionItemId
+      })).filter(i => i.productId); // only send product items to deduct stock
 
       // 2. Perform checkout payment transaction update
-      const payRes = await axios.put(`http://localhost:5000/pos/invoices/${invoice.id}/pay`, {
-        paymentMethod
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+      const payRes = await posAPI.pay(targetInvoiceId, {
+        paymentMethod,
+        items: payItems
       });
 
       // Complete checkout workflow

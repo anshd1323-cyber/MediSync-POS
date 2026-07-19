@@ -236,10 +236,24 @@ const getClinicInvoices = catchAsync(async (req, res) => {
   const clinicId = req.user.clinicId;
   const invoices = await Invoice.findAll({
     where: { clinicId },
-    include: [{ model: InvoiceItem, as: 'items' }],
+    include: [
+      { model: InvoiceItem, as: 'items' },
+      { 
+        model: Consultation, 
+        as: 'consultation',
+        include: [{ association: 'patient', attributes: ['name', 'email'] }]
+      }
+    ],
     order: [['createdAt', 'DESC']]
   });
-  res.status(200).json({ success: true, data: invoices });
+  
+  const data = invoices.map(inv => {
+    const json = inv.toJSON();
+    json.patientName = json.consultation?.patient?.name || 'Walk-in Patient';
+    return json;
+  });
+
+  res.status(200).json({ success: true, data });
 });
 
 const renewSubscription = catchAsync(async (req, res) => {

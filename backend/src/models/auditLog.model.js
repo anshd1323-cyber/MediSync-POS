@@ -1,48 +1,49 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const AuditLog = sequelize.define('AuditLog', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-  },
-  tenantId: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
-  userId: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
-  action: {
-    type: DataTypes.STRING(50),
-    allowNull: false,
-  },
-  entityType: {
-    type: DataTypes.STRING(50),
-    allowNull: false,
-  },
-  entityId: {
-    type: DataTypes.INTEGER,
-  },
-  details: {
-    type: DataTypes.TEXT, // JSON string
-    defaultValue: '{}',
-    get() {
-      const raw = this.getDataValue('details');
-      try { return JSON.parse(raw); } catch { return {}; }
+const AuditLog = sequelize.define(
+  'AuditLog',
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
     },
-    set(val) {
-      this.setDataValue('details', typeof val === 'string' ? val : JSON.stringify(val));
+    clinicId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'clinic_id',
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'user_id',
+    },
+    action: {
+      type: DataTypes.ENUM('DISPENSED_CONTROLLED', 'VOIDED_INVOICE', 'STOCK_ADJUSTMENT'),
+      allowNull: false,
+    },
+    entityId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'entity_id',
+    },
+    details: {
+      type: DataTypes.TEXT, // using TEXT for sqlite compat, JSON is parsed manually if needed
+      allowNull: true,
+      get() {
+        const raw = this.getDataValue('details');
+        try { return raw ? JSON.parse(raw) : null; } catch { return raw; }
+      },
+      set(val) {
+        this.setDataValue('details', typeof val === 'object' ? JSON.stringify(val) : val);
+      }
     },
   },
-  ipAddress: {
-    type: DataTypes.STRING(45),
-  },
-}, {
-  tableName: 'audit_logs',
-  updatedAt: false,
-});
+  {
+    tableName: 'audit_logs',
+    timestamps: true,
+  }
+);
 
 module.exports = AuditLog;

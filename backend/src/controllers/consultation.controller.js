@@ -1,4 +1,5 @@
 const consultationService = require('../services/consultation.service');
+const { sequelize, Consultation, CareEpisode, Prescription, PrescriptionItem, Product, Invoice, InvoiceItem } = require('../models');
 const catchAsync = require('../utils/catchAsync');
 
 const createConsultation = catchAsync(async (req, res) => {
@@ -32,10 +33,129 @@ const updateNotes = catchAsync(async (req, res) => {
   res.status(200).json({ success: true, data: consultation });
 });
 
+const finalizeConsultation = catchAsync(async (req, res) => {
+  const consultationId = req.params.id;
+  const { notes, prescriptionItems } = req.body;
+  const doctorId = req.user.id;
+  const clinicId = req.user.clinicId;
+
+  try {
+    const result = await sequelize.transaction(async (t) => {
+      // 1. Lock Consultation
+      const consultation = await Consultation.findByPk(consultationId, { lock: t.LOCK.UPDATE, transaction: t });
+      if (!consultation) throw new Error('CONSULTATION_NOT_FOUND');
+      if (consultation.doctorId !== doctorId) throw new Error('UNAUTHORIZED');
+      if (consultation.status === 'COMPLETED' || consultation.status === 'CANCELLED') throw new Error('ALREADY_FINALIZED');
+
+      // 2. Find CareEpisode
+      const episode = await CareEpisode.findOne({
+        where: { bookingId: consultation.id },
+        lock: t.LOCK.UPDATE,
+        transaction: t
+      });
+      if (!episode) throw new Error('CARE_EPISODE_NOT_FOUND');
+
+      // Update SOAP notes
+      if (notes) {
+        consultation.notes = typeof notes === 'string' ? notes : JSON.stringify(notes);
+      }
+      consultation.status = 'COMPLETED';
+      await consultation.save({ transaction: t });
+
+      // Handle Structured Plan -> Prescription Items
+      const items = prescriptionItems || [];
+      if (items.length > 0) {
+        // Find or create Prescription
+        let prescription = null;
+        if (episode.prescriptionId) {
+          prescription = await Prescription.findByPk(episode.prescriptionId, { lock: t.LOCK.UPDATE, transaction: t });
+        }
+
+        if (!prescription) {
+          prescription = await Prescription.create({
+            clinicId,
+            careEpisodeId: episode.id,
+            consultationId: consultation.id,
+            patientId: episode.patientId,
+            doctorId,
+            status: 'DRAFT'
+          }, { transaction: t });
+          episode.prescriptionId = prescription.id;
+        }
+
+        // Verify products and create items
+        for (const item of items) {
+          const product = await Product.findByPk(item.productId, { transaction: t });
+          if (!product || product.clinicId !== clinicId) throw new Error(`PRODUCT_NOT_FOUND: ${item.productId}`);
+          
+          await PrescriptionItem.create({
+            clinicId,
+            prescriptionId: prescription.id,
+            productId: item.productId,
+            dosage: item.dosage,
+            frequency: item.frequency,
+            durationDays: item.durationDays,
+            substitutionAllowed: item.substitutionAllowed || false,
+            scheduleClass: item.scheduleClass,
+            quantityPrescribed: item.quantityPrescribed,
+            quantityDispensed: 0
+          }, { transaction: t });
+        }
+
+        // Sign prescription
+        prescription.status = 'SIGNED';
+        prescription.signedAt = new Date();
+        prescription.signatureHash = 'hash_' + Date.now(); // pseudo hash
+        await prescription.save({ transaction: t });
+
+        episode.status = 'PRESCRIBED';
+      } else {
+        episode.status = 'COMPLETED';
+      }
+      
+      // Auto-Invoice for Consultation Fee
+      if (!episode.invoiceId) {
+        const fee = parseFloat(consultation.fee || 15.00);
+        const tax = parseFloat((fee * 0.05).toFixed(2));
+        const total = parseFloat((fee + tax).toFixed(2));
+
+        const invoice = await Invoice.create({
+          consultationId: consultation.id,
+          clinicId,
+          totalAmount: total,
+          paymentStatus: 'UNPAID',
+          paymentMethod: 'CASH',
+          taxApplied: tax
+        }, { transaction: t });
+
+        await InvoiceItem.create({
+          invoiceId: invoice.id,
+          itemName: 'Consultation Fee',
+          price: fee
+        }, { transaction: t });
+
+        episode.invoiceId = invoice.id;
+      }
+      
+      await episode.save({ transaction: t });
+
+      return { consultation, episode };
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    if (['CONSULTATION_NOT_FOUND', 'UNAUTHORIZED', 'ALREADY_FINALIZED', 'CARE_EPISODE_NOT_FOUND'].includes(err.message) || err.message.startsWith('PRODUCT_NOT_FOUND')) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = { 
   createConsultation, 
   listConsultations, 
   getConsultation, 
   updateStatus,
-  updateNotes 
+  updateNotes,
+  finalizeConsultation
 };

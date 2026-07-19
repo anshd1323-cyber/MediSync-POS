@@ -5,7 +5,9 @@ const ApiError = require('../utils/ApiError');
 
 const SALT_ROUNDS = 10;
 
-async function register({ name, email, password, role, specialization, yearsOfExperience }) {
+async function register(args) {
+  const { name, email, password, role, specialization, yearsOfExperience } = args;
+  
   const existing = await User.findOne({ where: { email } });
   if (existing) {
     throw new ApiError(409, 'An account with this email already exists');
@@ -16,6 +18,24 @@ async function register({ name, email, password, role, specialization, yearsOfEx
   const user = await User.create({ name, email, password: hashedPassword, role });
 
   if (role === 'DOCTOR') {
+    let clinicId = null;
+    
+    // B2B SaaS Onboarding: Create a new Clinic Tenant if provided
+    if (args.clinicName) {
+      const { Clinic } = require('../models');
+      const clinic = await Clinic.create({
+        name: args.clinicName,
+        address: args.clinicAddress || 'Pending Address',
+        latitude: args.clinicLatitude || 0,
+        longitude: args.clinicLongitude || 0,
+        subscriptionStatus: 'ACTIVE',
+        subscriptionExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      });
+      clinicId = clinic.id;
+      user.clinicId = clinicId;
+      await user.save();
+    }
+
     await DoctorProfile.create({
       userId: user.id,
       specialization,

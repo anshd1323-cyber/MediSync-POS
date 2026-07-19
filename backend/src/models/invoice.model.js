@@ -32,7 +32,7 @@ const Invoice = sequelize.define(
       field: 'payment_status',
     },
     paymentMethod: {
-      type: DataTypes.ENUM('CASH', 'CARD', 'UPI'),
+      type: DataTypes.ENUM('CASH', 'CARD', 'UPI', 'MIXED'),
       allowNull: false,
       defaultValue: 'CASH',
       field: 'payment_method',
